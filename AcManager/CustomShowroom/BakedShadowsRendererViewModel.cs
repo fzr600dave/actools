@@ -1,10 +1,11 @@
 ﻿using System;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Windows;
 using AcManager.Controls;
 using AcManager.Controls.Dialogs;
 using AcManager.Tools.Helpers;
@@ -23,6 +24,7 @@ using FirstFloor.ModernUI.Dialogs;
 using FirstFloor.ModernUI.Helpers;
 using FirstFloor.ModernUI.Presentation;
 using JetBrains.Annotations;
+using Size = System.Windows.Size;
 
 namespace AcManager.CustomShowroom {
     public class BakedShadowsRendererViewModel : NotifyPropertyChanged, IUserPresetable {
@@ -38,7 +40,7 @@ namespace AcManager.CustomShowroom {
         [CanBeNull]
         private readonly BaseRenderer _renderer;
 
-        private readonly Kn5 _kn5;
+        private readonly IKn5 _kn5;
         private readonly ISaveHelper _saveable;
 
         [NotNull]
@@ -64,17 +66,17 @@ namespace AcManager.CustomShowroom {
         [CanBeNull]
         private readonly CarObject _car;
 
-        public static BakedShadowsRendererViewModel ForTexture([CanBeNull] BaseRenderer renderer, [NotNull] Kn5 kn5, [NotNull] string textureName,
+        public static BakedShadowsRendererViewModel ForTexture([CanBeNull] BaseRenderer renderer, [NotNull] IKn5 kn5, [NotNull] string textureName,
                 [CanBeNull] CarObject car) {
             return new BakedShadowsRendererViewModel(renderer, kn5, textureName, null, car);
         }
 
-        public static BakedShadowsRendererViewModel ForObject([CanBeNull] BaseRenderer renderer, [NotNull] Kn5 kn5, [NotNull] string objectPath,
+        public static BakedShadowsRendererViewModel ForObject([CanBeNull] BaseRenderer renderer, [NotNull] IKn5 kn5, [NotNull] string objectPath,
                 [CanBeNull] CarObject car) {
             return new BakedShadowsRendererViewModel(renderer, kn5, null, objectPath, car);
         }
 
-        private BakedShadowsRendererViewModel([CanBeNull] BaseRenderer renderer, [NotNull] Kn5 kn5,
+        private BakedShadowsRendererViewModel([CanBeNull] BaseRenderer renderer, [NotNull] IKn5 kn5,
                 [CanBeNull] string textureName, [CanBeNull] string objectPath, [CanBeNull] CarObject car) {
             _renderer = renderer;
             _kn5 = kn5;
@@ -388,6 +390,18 @@ namespace AcManager.CustomShowroom {
                                 DdsEncoder.SaveAsDds(destination, calculated.Item1,
                                         UseDxt5 ? PreferredDdsFormat.DXT5 : PreferredDdsFormat.LuminanceTransparency, null);
                                 break;
+                            case ".png":
+                                if (FullyTransparent) {
+                                    using (var stream = new MemoryStream(calculated.Item1))
+                                    using (var jpgStream = new MemoryStream()) {
+                                        ImageUtils.Convert(stream, jpgStream, 97);
+                                        using (var output = File.Create(destination)) {
+                                            jpgStream.Position = 0;
+                                            Image.FromStream(jpgStream).Save(output, ImageFormat.Png);
+                                        }
+                                    }
+                                    break;
+                                } else goto default;
                             case ".jpg":
                             case ".jpeg":
                                 using (var stream = new MemoryStream(calculated.Item1))

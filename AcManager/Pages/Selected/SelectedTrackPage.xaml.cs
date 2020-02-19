@@ -10,11 +10,13 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using AcManager.Controls.Helpers;
+using AcManager.Controls.UserControls;
 using AcManager.CustomShowroom;
 using AcManager.Pages.Dialogs;
 using AcManager.Pages.Drive;
 using AcManager.Pages.Lists;
 using AcManager.Tools;
+using AcManager.Tools.AcObjectsNew;
 using AcManager.Tools.Helpers;
 using AcManager.Tools.Managers;
 using AcManager.Tools.Managers.Presets;
@@ -299,7 +301,7 @@ namespace AcManager.Pages.Selected {
                 }
             }
 
-            private static int CountPits(Kn5 kn5) {
+            private static int CountPits(IKn5 kn5) {
                 return LinqExtension.RangeFrom().TakeWhile(x => kn5.RootNode.GetByName($"AC_PIT_{x}") != null).Count();
             }
 
@@ -410,9 +412,29 @@ namespace AcManager.Pages.Selected {
         }
 
         protected override void OnVersionInfoBlockClick(object sender, MouseButtonEventArgs e) {
-            if (e.ChangedButton == MouseButton.Left && e.ClickCount == 1) {
+            /*if (e.ChangedButton == MouseButton.Left && e.ClickCount == 1) {
                 e.Handled = true;
                 new VersionInfoEditor(_model.SelectedTrackConfiguration).ShowDialog();
+            }*/
+            if (SelectedAcJsonObject.Author == AcCommonObject.AuthorKunos) {
+                if (SelectedAcJsonObject?.Dlc != null) {
+                    WindowsHelper.ViewInBrowser(SelectedAcJsonObject.Dlc.Url);
+                }
+                return;
+            }
+
+            if (e.ChangedButton == MouseButton.Left && e.ClickCount == 1) {
+                e.Handled = true;
+
+                if (Keyboard.Modifiers != ModifierKeys.Control) {
+                    new ModernPopup {
+                        Content = new PopupAuthor((ISelectedAcObjectViewModel)DataContext),
+                        PlacementTarget = sender as UIElement,
+                        StaysOpen = false
+                    }.IsOpen = true;
+                } else if (SelectedAcJsonObject.Url != null) {
+                    WindowsHelper.ViewInBrowser(SelectedAcJsonObject.Url);
+                }
             }
         }
 

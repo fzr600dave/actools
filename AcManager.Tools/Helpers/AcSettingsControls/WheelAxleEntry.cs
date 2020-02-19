@@ -81,7 +81,7 @@ namespace AcManager.Tools.Helpers.AcSettingsControls {
         public int DegressOfRotation {
             get => _degressOfRotation;
             set {
-                value = value.Clamp(40, 1180);
+                value = value.Clamp(40, 9000);
                 if (Equals(value, _degressOfRotation)) return;
                 _degressOfRotation = value;
                 OnPropertyChanged();
@@ -129,7 +129,7 @@ namespace AcManager.Tools.Helpers.AcSettingsControls {
         public double Gamma {
             get => _gamma;
             set {
-                value = value.Clamp(1d, 5d);
+                value = value.Clamp(0.2d, 20d);
                 if (Equals(value, _gamma)) return;
                 _gamma = value;
                 OnPropertyChanged();

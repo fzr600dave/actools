@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -148,41 +149,64 @@ namespace AcManager.Pages.Settings {
         public enum Mode {
             NoShadersPatch,
             NoConfigs,
-            NoFittingConfigs,
             EverythingIsFine
         }
 
         public class ViewModel : NotifyPropertyChanged, IDisposable {
             private readonly bool _isLive;
-            private StoredValue _selectedPageId = Stored.Get("/Patch.SettingsPage.Selected");
+            private readonly StoredValue _selectedPageId = Stored.Get("/Patch.SettingsPage.Selected");
 
             private FileSystemWatcher _watcher;
 
             public ViewModel(bool isLive) {
-                if (PatchHelper.GetInstalledVersion() == null) {
+                Logging.Here();
+
+                try {
+                    if (PatchHelper.GetInstalledVersion() == null) {
+                        _selectedPageId.Value = null;
+                    }
+                } catch (Exception e) {
+                    Logging.Error(e);
                     _selectedPageId.Value = null;
                 }
 
+                Logging.Debug(AcRootDirectory.Instance.Value);
+                Logging.Debug(PatchHelper.GetRootDirectory());
+                Logging.Debug(FileUtils.NormalizePath(Path.Combine(PatchHelper.GetRootDirectory(), "config")));
+
+                Pages = new BetterObservableCollection<PatchPage>();
                 PagesView = new BetterListCollectionView(Pages);
                 PagesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(PatchPage.Group)));
 
+                Logging.Here();
+
                 _isLive = isLive;
                 _dir = FileUtils.NormalizePath(Path.Combine(PatchHelper.GetRootDirectory(), "config"));
+                Logging.Debug(_dir);
 
                 _watcher = new FileSystemWatcher(AcRootDirectory.Instance.RequireValue) {
                     NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName,
                     IncludeSubdirectories = true,
                     EnableRaisingEvents = true
                 };
+                Logging.Here();
 
                 _watcher.Created += OnWatcherChanged;
                 _watcher.Changed += OnWatcherChanged;
                 _watcher.Deleted += OnWatcherChanged;
                 _watcher.Renamed += OnWatcherRenamed;
+                Logging.Debug(_watcher);
 
                 CreateConfigs();
                 RescanPossibleIssues();
             }
+
+            private AsyncCommand _installPatchCommand;
+
+            public AsyncCommand InstallPatchCommand => _installPatchCommand ?? (_installPatchCommand = new AsyncCommand(async () => {
+                await PatchUpdater.Instance.CheckAndUpdateIfNeeded();
+                await PatchUpdater.Instance.InstallAsync(PatchUpdater.Instance.LatestRecommendedVersion, default(CancellationToken));
+            }, () => Mode != Mode.EverythingIsFine));
 
             private readonly Busy _busyCreateConfigs = new Busy(true);
             private readonly Busy _busyUpdateVersion = new Busy(true);
@@ -322,8 +346,10 @@ namespace AcManager.Pages.Settings {
             static ViewModel() {
                 if (!PatchHelper.OptionPatchSupport) return;
                 BbCodeBlock.AddLinkCommand(new Uri("cmd://settingsShadersPatch/fixPatch/reinstallCurrent"), PatchUpdater.Instance.ReinstallCommand);
-                BbCodeBlock.AddLinkCommand(new Uri("cmd://settingsShadersPatch/fixPatch/unblockPatch"),
-                        new DelegateCommand(() => { FileUtils.Unblock(PatchHelper.GetMainFilename()); }));
+                BbCodeBlock.AddLinkCommand(new Uri("cmd://settingsShadersPatch/fixPatch/unblockPatch"), new DelegateCommand(() => {
+                    FileUtils.Unblock(PatchHelper.GetMainFilename());
+                    Instance?.Model?.RescanPossibleIssues();
+                }));
                 BbCodeBlock.AddLinkCommand(new Uri("cmd://settingsShadersPatch/fixPatch/switchTo64Bits"), new DelegateCommand(() => {
                     SettingsHolder.Drive.Use32BitVersion = false;
                     Logging.Debug(Instance);
@@ -421,14 +447,7 @@ namespace AcManager.Pages.Settings {
                     }
                 });
 
-                if (Configs?.Count > 0) {
-                    Mode = Mode.EverythingIsFine;
-                } else if (anyConfigFound) {
-                    Mode = Mode.NoFittingConfigs;
-                } else {
-                    Mode = Mode.NoConfigs;
-                }
-
+                Mode = Configs?.Count > 0 ? Mode.EverythingIsFine : Mode.NoConfigs;
                 Pages.ReplaceEverythingBy_Direct(PatchHelper.OptionPatchSupport
                         ? BasePages.Concat(Configs.Select(x => new PatchPage(x)))
                         : Configs.Select(x => new PatchPage(x)));
@@ -450,7 +469,9 @@ namespace AcManager.Pages.Settings {
 
             public Mode Mode {
                 get => _mode;
-                set => Apply(value, ref _mode);
+                set => Apply(value, ref _mode, () => {
+                    _installPatchCommand?.RaiseCanExecuteChanged();
+                });
             }
 
             public const string PageIdInformation = "information";
@@ -509,7 +530,7 @@ namespace AcManager.Pages.Settings {
                         new Uri("/Pages/ShadersPatch/ShadersDataBackgrounds.xaml", UriKind.Relative)),
             };
 
-            public BetterObservableCollection<PatchPage> Pages { get; } = new BetterObservableCollection<PatchPage>();
+            public BetterObservableCollection<PatchPage> Pages { get; }
 
             public BetterListCollectionView PagesView { get; }
 
